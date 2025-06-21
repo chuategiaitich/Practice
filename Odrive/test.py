@@ -12,10 +12,10 @@ def connect_odrive():
     global odrv0
     print("Searching for an ODrive...")
     odrv0 = odrive.find_any()
-    print(f"ODrive connected! Firmware: {odrv0.fw_version_major}.{odrv0.fw_version_minor}.{odrv0.fw_version_revision}")
+    print(f"ODrive connected! Firmware: {odrv0.fw_version_major}.{odrv0.fw_version_minor}.{odrv0.fw_version_revision}.{odrv0.serial_number:12X}")
     return odrv0
 
-def calibration():
+def set_config():
     global odrv0
     odrv = odrv0
     if odrv is None:
@@ -26,8 +26,9 @@ def calibration():
     print("Erasing old config and rebooting...")
     odrv.erase_configuration()
     odrv.reboot()
-    time.sleep(2)
+    time.sleep(10)
     odrv0 = odrive.find_any()
+    odrv = odrv0
     print("Done.")
     print("Starting configuration...")
 
@@ -73,17 +74,26 @@ def calibration():
     print("Done.")
     print("Rebooting ODrive...")
     odrv.reboot()
-    time.sleep(2)
+    time.sleep(10)
     odrv = odrive.find_any()
     print("ODrive Ready.")
+    
 
-    #Calibration
+# def Tune():
+#     global odrv0
+#     if odrv0 is None:
+#         print("Disconnected. Run connect_odrive().")
+#         return
+#     odrv0.axis0.controller.config = AxisState.
+
+def state_calib_full():
+    global odrv0
     print("Running calibration...")
-    odrv.axis0.requested_state = AxisState.FULL_CALIBRATION_SEQUENCE
-    # while odrv.axis0.current_state != AxisState.IDLE:
-    #     time.sleep(0.1)
+    odrv0.axis0.requested_state = AxisState.FULL_CALIBRATION_SEQUENCE
+    while odrv0.axis0.current_state != AxisState.IDLE:
+        time.sleep(0.1)
     print("Done.")
-    odrv.axis0.requested_state = AxisState.IDLE
+    odrv0.axis0.requested_state = AxisState.IDLE
     print("Motor is now IDLE")
 
 def print_encoder_position(duration):
@@ -104,31 +114,51 @@ def print_encoder_position(duration):
             print(f"Error: {e}")
 
 if __name__ == "__main__":
-    try:
-        connect_odrive()
-        # time.sleep(2)
-        # calibration()
-        # print_encoder_position(15)
-        while True:
-            user_input = input("'c' to call calibration() ; 'p+float' to call print_encoder_position ; 'q' to quit: ")
-            user_input = user_input.lower().strip()
-            if user_input == 'c':
-                calibration()
-            elif user_input.startswith('p'):
-                try:
-                    duration = float(user_input[1:])
-                    if duration <= 0:
-                        print("Duration time must higher than 0.")
-                    else:
-                        print_encoder_position(duration)
-                except ValueError:
-                    print("Wrong format.")
-            elif user_input == 'q':
-                print("Disconnected.")
-                break
-            else:
+    # try:
+    #     connect_odrive()
+    #     # time.sleep(2)
+    #     # calibration()
+    #     # print_encoder_position(15)
+    #     while True:
+    #         user_input = input("'c' to call calibration() ; 'p+float' to call print_encoder_position ; 'q' to quit: ")
+    #         user_input = user_input.lower().strip()
+    #         if user_input == 'c':
+    #             set_config()
+    #         elif user_input.startswith('p'):
+    #             try:
+    #                 duration = float(user_input[1:])
+    #                 if duration <= 0:
+    #                     print("Duration time must higher than 0.")
+    #                 else:
+    #                     print_encoder_position(duration)
+    #             except ValueError:
+    #                 print("Wrong format.")
+    #         elif user_input == 'q':
+    #             print("Disconnected.")
+    #             break
+    #         else:
+    #             print("Wrong format.")
+    # except odrive.exceptions.ODriveError as e:
+    #     print(f"ODrive error: {e}")
+    # except Exception as e:
+    #     print(f"Unexpected error: {e}")
+    connect_odrive()
+    while True: 
+        user_input = input("'c' to call calibration() ; 'p+float' to call print_encoder_position ; 'q' to quit: ")
+        user_input = user_input.lower().strip()
+        if user_input == 'c':
+            set_config()
+        elif user_input.startswith('p'):
+            try:
+                duration = float(user_input[1:])
+                if duration <= 0:
+                    print("Duration time must higher than 0.")
+                else:
+                    print_encoder_position(duration)
+            except ValueError:
                 print("Wrong format.")
-    except odrive.exceptions.ODriveError as e:
-        print(f"ODrive error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+        elif user_input == 'q':
+            print("Disconnected.")
+            break
+        else:
+            print("Wrong format.")
