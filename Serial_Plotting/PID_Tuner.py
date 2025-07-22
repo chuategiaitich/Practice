@@ -3,6 +3,7 @@ import re
 import serial
 import serial.tools.list_ports
 import threading
+from threading import Lock
 from time import time
 from collections import defaultdict
 from PyQt6.QtCore import pyqtSignal, QObject, QTimer, Qt
@@ -28,7 +29,7 @@ class Serial_Read(QObject):
                 parity=parity,
                 bytesize=databits,
                 stopbits=stopbits,
-                timeout=1
+                timeout=0.01
             )
             self.running = True
             threading.Thread(target=self.__read_loop__, daemon=True).start()
@@ -37,19 +38,20 @@ class Serial_Read(QObject):
 
     def __read_loop__(self):
         while self.running and self.serial and self.serial.is_open:
-            try:
-                line = self.serial.readline().decode("utf-8").strip()
-                if line:
-                    # Split by ';' and emit each value with its index as key
-                    values = line.split(";")
-                    for idx, val in enumerate(values):
-                        try:
-                            fval = float(val)
-                            self.new_data.emit(str(idx), fval)
-                        except ValueError:
-                            continue
-            except Exception:
-                continue
+            if self.serial.in_waiting > 0:
+                try:
+                    line = self.serial.readline().decode("utf-8").strip()
+                    if line:
+                        # Split by ';' and emit each value with its index as key
+                        values = line.split(";")
+                        for idx, val in enumerate(values):
+                            try:
+                                fval = float(val)
+                                self.new_data.emit(str(idx), fval)
+                            except ValueError:
+                                continue
+                except Exception:
+                    continue
 
     def __send__(self, data):
         if self.serial and self.serial.is_open:
@@ -67,7 +69,6 @@ class Serial_Plotter(QWidget):
         self.resize(1200, 600)
 
         main_layout = QVBoxLayout(self)
-
 
         # _____________________________ # Serial Config layout 
         serialGroup = QGroupBox("Serial Config")
@@ -288,15 +289,18 @@ class Serial_Plotter(QWidget):
             self.reader.__send__(text)
             self.sendBox.clear()
 
+
     def handle_new_data(self, key, value):
         # Store new data in buffer
         buf = self.data_buffers[key]
-        buf["x"].append(time())
+        timestamp = time()
+        buf["x"].append(round(timestamp, 5))
         buf["y"].append(value)
         # Limit buffer size
-        if len(buf["x"]) > 500:
-            buf["x"] = buf["x"][-500:]
-            buf["y"] = buf["y"][-500:]
+        range = -2000
+        if len(buf["x"]) > 0:
+            buf["x"]  = buf["x"][range:]
+            buf["y"]  = buf["y"][range:]
 
     def update_plot(self):
         # Plot all curves from buffer
@@ -306,10 +310,8 @@ class Serial_Plotter(QWidget):
                 self.curves[key] = self.plotWidget.plot(pen=color, name=f"Ch {key}")
             # Offset x to start at zero
             if buf["x"]:
-                x0 = buf["x"][0]
-                x = [t - x0 for t in buf["x"]]
-                self.curves[key].setData(x, buf["y"])
-        
+                if buf["y"]:
+                    self.curves[key].setData(buf["x"], buf["y"])  
 
     def send_command(self):
         # D_axis
