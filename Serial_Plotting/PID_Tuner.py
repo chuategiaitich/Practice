@@ -1,18 +1,13 @@
 import sys
-import re
 import serial
 import serial.tools.list_ports
-import threading
-from threading import Lock
-from time import time
 from collections import defaultdict
-from PyQt6.QtCore import pyqtSignal, QObject, QTimer, Qt
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox,
-    QLabel, QScrollArea, QFrame, QComboBox, QGroupBox, QMessageBox, QLineEdit,
-    QGridLayout, QSizePolicy, QRadioButton, QStyle
-)
+from time import time
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
+                            QComboBox, QPushButton, QLabel, QLineEdit, QMessageBox, QRadioButton,QSizePolicy)
+from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 import pyqtgraph as pg
+import threading
 
 class Serial_Read(QObject):
     new_data = pyqtSignal(str, float)
@@ -42,7 +37,6 @@ class Serial_Read(QObject):
                 try:
                     line = self.serial.readline().decode("utf-8").strip()
                     if line:
-                        # Split by ';' and emit each value with its index as key
                         values = line.split(";")
                         for idx, val in enumerate(values):
                             try:
@@ -66,11 +60,11 @@ class Serial_Plotter(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Realtime Serial Plotter")
-        self.resize(1200, 600)
+        self.resize(1600, 900)
 
         main_layout = QVBoxLayout(self)
 
-        # _____________________________ # Serial Config layout 
+        # Serial Config layout 
         serialGroup = QGroupBox("Serial Config")
         serialGroup_layout = QHBoxLayout()
         serialGroup.setLayout(serialGroup_layout)
@@ -97,9 +91,8 @@ class Serial_Plotter(QWidget):
         serialGroup_layout.addWidget(self.stopbitsBox)
         serialGroup_layout.addWidget(self.connectButton)
         serialGroup_layout.addWidget(self.disconnectButton)
-        # _____________________________ # Serial Config layout
 
-        # _____________________________ # Plotting & Tuning layout
+        # Plotting & Tuning layout
         Plotting_Tuning_layout = QHBoxLayout()
         
         # PID Tuner layout
@@ -118,14 +111,8 @@ class Serial_Plotter(QWidget):
             radio = QRadioButton(str(val))
             self.step_layout.addWidget(radio)
             self.step_radios.append(radio)
-        self.step_radios[1].setChecked(True)  # Default to "1"
+        self.step_radios[1].setChecked(True)
         PID_Tuner_layout.addWidget(self.step_group)
-
-        def get_step():
-            for radio, val in zip(self.step_radios, self.step_values):
-                if radio.isChecked():
-                    return val
-            return 1
 
         Plotting_Tuning_layout.addWidget(PID_Tuner)
         
@@ -135,88 +122,35 @@ class Serial_Plotter(QWidget):
         self.plotWidget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         Plotting_Tuning_layout.addWidget(self.plotWidget)
         
-        # Add the combined layout to the main layout
         main_layout.addLayout(Plotting_Tuning_layout)
-        # _____________________________ # Plotting & Tuning layout 
 
-        # _____________________________ # PID tuning for D_axis
+        # PID tuning for D_axis
         PID_parameters = QGroupBox("D_axis")
         PID_parameters_layout = QHBoxLayout()
         PID_parameters.setLayout(PID_parameters_layout)
         main_layout.addWidget(PID_parameters)
-        def make_pid_row(label_text, line_edit_attr):
-            pid_row_widget = QWidget()
-            pid_row_layout = QHBoxLayout(pid_row_widget)
-            label = QLabel(label_text)
-            line_edit = QLineEdit()
-            setattr(self, line_edit_attr, line_edit)
-            btn_minus = QPushButton("-")
-            btn_plus = QPushButton("+")
-            pid_row_layout.addWidget(label)
-            pid_row_layout.addWidget(line_edit)
-            pid_row_layout.addWidget(btn_minus)
-            pid_row_layout.addWidget(btn_plus)
-            PID_parameters_layout.addWidget(pid_row_widget)
+        self.D_inputs = {}
+        PID_parameters_layout.addWidget(self.make_pid_row("Kp:", "D_axis_Kp", "D_Kp"))
+        PID_parameters_layout.addWidget(self.make_pid_row("Ki:", "D_axis_Ki", "D_Ki"))
+        PID_parameters_layout.addWidget(self.make_pid_row("Kd:", "D_axis_Kd", "D_Kd"))
+        self.D_inputs["D_axis_Kp"].setText("0")
+        self.D_inputs["D_axis_Ki"].setText("0")
+        self.D_inputs["D_axis_Kd"].setText("0")
 
-            def change_value(delta):
-                try:
-                    val = float(line_edit.text())
-                except ValueError:
-                    val = 0.0
-                step = get_step()
-                new_val = val + delta * step
-                line_edit.setText(str(round(new_val, 6)))
-                self.send_command()
-            btn_plus.clicked.connect(lambda: change_value(1))
-            btn_minus.clicked.connect(lambda: change_value(-1))
-
-        make_pid_row("Kp:", "D_Kp_input")
-        make_pid_row("Ki:", "D_Ki_input")
-        make_pid_row("Kd:", "D_Kd_input")
-        self.D_Kp_input.setText("0")
-        self.D_Ki_input.setText("0")
-        self.D_Kd_input.setText("0")
-        # _____________________________ # PID tuning for D_axis
-
-        # _____________________________ # PID tuning for Q_axis
+        # PID tuning for Q_axis
         PID_parameters = QGroupBox("Q_axis")
         PID_parameters_layout = QHBoxLayout()
         PID_parameters.setLayout(PID_parameters_layout)
         main_layout.addWidget(PID_parameters)
-        def make_pid_row(label_text, line_edit_attr):
-            pid_row_widget = QWidget()
-            pid_row_layout = QHBoxLayout(pid_row_widget)
-            label = QLabel(label_text)
-            line_edit = QLineEdit()
-            setattr(self, line_edit_attr, line_edit)
-            btn_minus = QPushButton("-")
-            btn_plus = QPushButton("+")
-            pid_row_layout.addWidget(label)
-            pid_row_layout.addWidget(line_edit)
-            pid_row_layout.addWidget(btn_minus)
-            pid_row_layout.addWidget(btn_plus)
-            PID_parameters_layout.addWidget(pid_row_widget)
+        self.Q_inputs = {}
+        PID_parameters_layout.addWidget(self.make_pid_row("Kp:", "Q_axis_Kp", "Q_Kp"))
+        PID_parameters_layout.addWidget(self.make_pid_row("Ki:", "Q_axis_Ki", "Q_Ki"))
+        PID_parameters_layout.addWidget(self.make_pid_row("Kd:", "Q_axis_Kd", "Q_Kd"))
+        self.D_inputs["Q_axis_Kp"].setText("0")
+        self.D_inputs["Q_axis_Ki"].setText("0")
+        self.D_inputs["Q_axis_Kd"].setText("0")
 
-            def change_value(delta):
-                try:
-                    val = float(line_edit.text())
-                except ValueError:
-                    val = 0.0
-                step = get_step()
-                new_val = val + delta * step
-                line_edit.setText(str(round(new_val, 6)))
-                self.send_command()
-            btn_plus.clicked.connect(lambda: change_value(1))
-            btn_minus.clicked.connect(lambda: change_value(-1))
-        make_pid_row("Kp:", "Q_Kp_input")
-        make_pid_row("Ki:", "Q_Ki_input")
-        make_pid_row("Kd:", "Q_Kd_input")
-        self.Q_Kp_input.setText("0")
-        self.Q_Ki_input.setText("0")
-        self.Q_Kd_input.setText("0")
-        # _____________________________ # PID tuning for Q_axis
-
-        # _____________________________ # Serial communication layout 
+        # Serial communication layout 
         Serial_communication = QGroupBox("Serial Communication")
         Serial_communication_layout = QHBoxLayout()
         Serial_communication.setLayout(Serial_communication_layout)
@@ -229,7 +163,6 @@ class Serial_Plotter(QWidget):
 
         self.data_buffers = defaultdict(lambda: {"x": [], "y": []})
         self.curves = {}
-        # _____________________________ # Serial communication layout 
 
         self.reader = Serial_Read()
         self.reader.new_data.connect(self.handle_new_data)
@@ -239,6 +172,50 @@ class Serial_Plotter(QWidget):
         self.timer.start(50)
 
         self.setup_serial()
+
+    def make_pid_row(self, label_text, key, param_type):
+        pid_row_widget = QWidget()
+        pid_row_layout = QHBoxLayout(pid_row_widget)
+        label = QLabel(label_text)
+        line_edit = QLineEdit()
+        self.D_inputs[key] = line_edit
+        btn_minus = QPushButton("-")
+        btn_plus = QPushButton("+")
+        btn_minus.clicked.connect(lambda: self.adjust_pid_value(line_edit, param_type, False))
+        btn_plus.clicked.connect(lambda: self.adjust_pid_value(line_edit, param_type, True))
+        pid_row_layout.addWidget(label)
+        pid_row_layout.addWidget(line_edit)
+        pid_row_layout.addWidget(btn_minus)
+        pid_row_layout.addWidget(btn_plus)
+        return pid_row_widget
+
+    def adjust_pid_value(self, line_edit, param_type, increment):
+        # Get current step size
+        step = 1
+        for radio, val in zip(self.step_radios, self.step_values):
+            if radio.isChecked():
+                step = val
+                break
+
+        # Get current value from line edit
+        try:
+            current_value = float(line_edit.text())
+        except ValueError:
+            current_value = 0.0
+        
+        # Adjust value
+        new_value = current_value + step if increment else current_value - step
+        line_edit.setText(f"{new_value:.3f}")
+        
+        # Send serial command if port is open
+        if self.reader.serial and self.reader.serial.is_open:
+            command = f"{param_type}{new_value}"
+            try:
+                self.reader.__send__(command)
+            except Exception as e:
+                QMessageBox.critical(None, "Serial Error", f"Failed to send command: {e}")
+        else:
+            QMessageBox.critical(None, "Serial Error", f"Serial port not open for command: {param_type}")
 
     def setup_serial(self):
         self.refresh_ports()
@@ -271,9 +248,10 @@ class Serial_Plotter(QWidget):
             databits = int(self.databitsBox.currentText())
             stopbits_map = {"1": serial.STOPBITS_ONE, "1.5": serial.STOPBITS_ONE_POINT_FIVE, "2": serial.STOPBITS_TWO}
             stopbits = stopbits_map[self.stopbitsBox.currentText()]
+            self.reader.__stop__()  # Ensure any previous connection is closed
             self.reader.__start__(port, baudrate, parity, databits, stopbits)
             if self.reader.serial and self.reader.serial.is_open:
-                QMessageBox.information(self, "Succeed", "Connected successfully!")
+                QMessageBox.information(self, "Succeed", f"Connected successfully to {port} at {baudrate} baud.")
             else:
                 raise Exception("Failed to open serial port")
         except Exception as e:
@@ -289,55 +267,24 @@ class Serial_Plotter(QWidget):
             self.reader.__send__(text)
             self.sendBox.clear()
 
-
     def handle_new_data(self, key, value):
-        # Store new data in buffer
         buf = self.data_buffers[key]
         timestamp = time()
         buf["x"].append(round(timestamp, 5))
         buf["y"].append(value)
-        # Limit buffer size
         range = -2000
         if len(buf["x"]) > 0:
-            buf["x"]  = buf["x"][range:]
-            buf["y"]  = buf["y"][range:]
+            buf["x"] = buf["x"][range:]
+            buf["y"] = buf["y"][range:]
 
     def update_plot(self):
-        # Plot all curves from buffer
         for key, buf in self.data_buffers.items():
             if key not in self.curves:
                 color = pg.intColor(int(key), hues=len(self.data_buffers))
                 self.curves[key] = self.plotWidget.plot(pen=color, name=f"Ch {key}")
-            # Offset x to start at zero
             if buf["x"]:
                 if buf["y"]:
                     self.curves[key].setData(buf["x"], buf["y"])  
-
-    def send_command(self):
-        # D_axis
-        d_kp = self.D_Kp_input.text().strip()
-        d_ki = self.D_Ki_input.text().strip()
-        d_kd = self.D_Kd_input.text().strip()
-        # Q_axis
-        q_kp = self.Q_Kp_input.text().strip()
-        q_ki = self.Q_Ki_input.text().strip()
-        q_kd = self.Q_Kd_input.text().strip()
-
-        # Send D_axis commands if values are present
-        if d_kp:
-            self.reader.__send__(f"DP{d_kp}")
-        if d_ki:
-            self.reader.__send__(f"DI{d_ki}")
-        if d_kd:
-            self.reader.__send__(f"DD{d_kd}")
-
-        # Send Q_axis commands if values are present
-        if q_kp:
-            self.reader.__send__(f"QP{q_kp}")
-        if q_ki:
-            self.reader.__send__(f"QI{q_ki}")
-        if q_kd:
-            self.reader.__send__(f"QD{q_kd}")
 
     def closeEvent(self, event):
         self.reader.__stop__()
